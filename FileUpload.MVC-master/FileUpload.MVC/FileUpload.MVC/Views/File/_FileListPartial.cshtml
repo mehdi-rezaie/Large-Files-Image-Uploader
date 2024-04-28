@@ -1,0 +1,137 @@
+﻿<style>
+    #imageModal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        align-items: center;
+        justify-content: center;
+    }
+
+    #imageModal div {
+        position: relative;
+        background: white;
+        padding: 20px;
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.5);
+    }
+
+    #imageModal span {
+        cursor: pointer;
+        position: absolute;
+        top: 10px;
+        right: 20px;
+        font-size: 24px;
+        color: #000;
+        font-weight: bold;
+    }
+
+    #imageModal img {
+        max-width: 100%;
+        max-height: 80vh;
+    }
+
+    #preloader {
+        display: none;
+        position: fixed;
+        z-index: 2000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-size: 20px;
+    }
+
+</style>
+@{
+    // Retrieve the ProductId from the current request
+    var currentProductId = Context.Request.Query["ProductId"];
+}
+
+@if (Model.FilesOnFileSystem.Count == 0)
+{
+    <caption>No Images Found</caption>
+}
+else
+{
+    <caption>List of Files on File System</caption>
+    <div id="preloader" style="display: none;"></div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Product ID</th>
+                <th>File Type</th>
+                <th>Created On</th>
+                <th>Preview</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var file in Model.FilesOnFileSystem)
+            {
+                <tr>
+                    <td>@file.Name</td>
+                    <td>@file.ProductID</td>
+                    <td>@file.FileType</td>
+                    <td>@file.CreatedOn</td>
+                    <td>
+                        <!-- Image preview (only for image files) -->
+                        @if (file.FileType.StartsWith("image/"))
+                        {
+                            <img src="@Url.Action("ImagePreview", "File", new { id = file.Id })"
+                                 alt="Preview"
+                                 style="height: 100px; cursor: pointer;"
+                                 onclick="showImageModal('@Url.Action("ImagePreview", "File", new { id = file.Id })')" />
+                        }
+                    </td>
+                    <td>
+                        <!-- File actions -->
+                        <a type="button" class="btn btn-primary" asp-controller="File" asp-action="DownloadFileFromFileSystem" asp-route-id="@file.Id">Download</a>
+                        <a type="button" class="btn btn-danger" onclick="deleteFile(@file.Id, this)" href="javascript:void(0);">Delete</a>
+
+                    </td>
+                </tr>
+
+            }
+
+        </tbody>
+    </table>
+
+}
+
+@if (Model.TotalPages > 1)
+{
+    <nav>
+        <ul class="pagination">
+            <li class="page-item @(Model.CurrentPage == 1 ? "disabled" : "")">
+                <a class="page-link" href="@Url.Action("Index", new { ProductId = currentProductId, currentPage = Model.CurrentPage - 1, pageSize = 5})">Previous</a>
+            </li>
+            @for (int i = 1; i <= Model.TotalPages; i++)
+            {
+                <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
+                    <a class="page-link" href="@Url.Action("Index", new {ProductId = currentProductId, currentPage = i, pageSize = 5})">@i</a>
+                </li>
+            }
+            <li class="page-item @(Model.CurrentPage == Model.TotalPages ? "disabled" : "")">
+                <a class="page-link" href="@Url.Action("Index", new {ProductId = currentProductId, currentPage = Model.CurrentPage + 1, pageSize = 5})">Next</a>
+            </li>
+        </ul>
+    </nav>
+}
+
+
+<div id="imageModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+    <div style="position: relative; background: white; padding: 20px;">
+        <span style="cursor: pointer; position: absolute; top: 10px; right: 20px; font-size: 20px; color: #000;" onclick="closeImageModal()">&times;</span>
+        <img id="modalImage" src="" style="max-width: 100%; max-height: 80vh;" />
+    </div>
+</div>

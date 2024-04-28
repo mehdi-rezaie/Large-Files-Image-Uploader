@@ -1,0 +1,326 @@
+﻿@model FileUploadViewModel
+@{
+    ViewData["Title"] = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<style>
+    #up-progress, #up-bar, #up-percent {
+        height: 30px;
+    }
+
+    #up-progress {
+        position: relative;
+        background: #fff;
+    }
+
+    #up-bar {
+        background: #d3e3ff;
+        width: 0;
+        transition: width 0.5s;
+    }
+
+    #up-percent {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+<h4>Start Uploading Data Here</h4>
+<hr />
+@if (ViewBag.Message != null)
+{
+    <div class="alert alert-success alert-dismissible" style="margin-top:20px">
+        @ViewBag.Message
+    </div>
+}
+<form action="null" method="post" enctype="multipart/form-data" class="dropzone" id="my-awesome-dropzone">
+    <div class="fallback">
+        <input name="file" type="file" multiple />
+    </div>
+
+</form>
+<br />
+<button id="uploadButton" class="btn btn-success">Upload Files</button>
+<div id="up-progress">
+    <div id="up-bar"></div>
+    <div id="up-percent">0%</div>
+</div>
+<hr />
+<div id="fileListContainer">
+    @Html.Partial("_FileListPartial", Model)
+</div>
+
+
+
+
+
+<script>
+    // window.onload = function () {
+    //     var params = new URLSearchParams(window.location.search);
+    //     var productID = params.get('ProductId');
+
+    //     if (productID) {
+    //         updateFileList(productID);
+    //     }
+    // };
+
+
+    Dropzone.options.myAwesomeDropzone = {
+        paramName: "files", // The name that will be used to transfer the file
+        maxFilesize: 50000000, // MB
+        maxThumbnailFilesize: 50, //MB
+        parallelUploads: 500,
+        autoProcessQueue: false, // Prevents files from being uploaded immediately
+        dictDefaultMessage: "Drop files here to upload",
+        acceptedFiles: "image/*,image/heic",
+        init: function() {
+            var myDropzone = this;
+            $('#up-progress').hide();
+            var uprog = {
+                // (A) INIT
+                hBar: null,     // html progress bar
+                hPercent: null, // html upload percentage
+                hbtnFile: null,    // html file picker
+                init: () => {
+                    // (A1) GET HTML ELEMENTS
+                    uprog.hBar = document.getElementById("up-bar");
+                    uprog.hPercent = document.getElementById("up-percent");
+                    uprog.hbtnFile = document.getElementById("uploadButton");
+
+                    uprog.hbtnFile.disabled = false;
+                },
+
+                // (B) HELPER - UPDATE PROGRESS BAR
+                update: percent => {
+                    percent = percent + "%";
+                    uprog.hBar.style.width = percent;
+                    uprog.hPercent.innerHTML = percent;
+                    if (percent == "100%") { uprog.hbtnFile.disabled = false; }
+                },
+            };
+            uprog.init();
+            $('.dropzone').on('click', '.removeFile', function () {
+                // This will execute when any child button is clicked
+                myDropzone.removeFile(myDropzone.files[$(this).parent().parent().index() - 1]);
+            });
+
+            // Assign an initial order index to each file as they are added
+            this.on("addedfile", function (file) {
+                file.orderIndex = myDropzone.files.indexOf(file);
+                $('.dz-details:not(:has(.removeFile))').append('<div class="dz-filename removeFile" style="color:red"><span data-dz-name="">Remove</span></div>');
+                // Initialize sortable
+                $("#my-awesome-dropzone").sortable({
+                    // ... sortable configuration ...
+                    update: function (event, ui) {
+                        // Update order indexes when files are rearranged
+                        $('.dz-preview').each(function (index, element) {
+                            var dzFile = Dropzone.forElement("#my-awesome-dropzone").files[index];
+                            dzFile.orderIndex = index;
+                        });
+                    }
+                });
+                hideShowUploaderForDropZone(true);
+            });
+
+            document.getElementById("uploadButton").addEventListener("click", function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                var params = new URLSearchParams(window.location.search);
+                var ProductId = params.get('ProductId');
+
+                if (!ProductId) {
+                    alert("Product ID is null or empty. Cannot upload files.");
+                    return; // Stop execution if productID is null or empty
+                }
+
+
+                $('#up-progress').show();
+                var formData = new FormData();
+
+
+                // Sort Dropzone files based on the order index
+                myDropzone.files.sort(function (a, b) {
+                    return a.orderIndex - b.orderIndex;
+                });
+
+                // Append files with their display sequence to FormData
+                myDropzone.files.forEach(function (file, index) {
+                    formData.append('files', file);
+                    formData.append('displaySequences', index + 1);
+                });
+
+                formData.append('ProductId', ProductId);
+                hideShowUploaderForDropZone(false);
+                $.ajax({
+                    url: '/File/UploadToFileSystem',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    xhr: function () {
+                        var xhr = new window.XMLHttpRequest();
+                        // Listen to the upload progress event
+                        xhr.upload.addEventListener("progress", function (evt) {
+                            if (evt.lengthComputable) {
+                                // Calculate the percentage uploaded
+                                var percentComplete = (evt.loaded / evt.total) * 95;
+
+                                percentComplete = percentComplete.toFixed(2);
+                                // Update your progress UI here
+                                console.log('Upload progress: ' + percentComplete + '%');
+                                // You can update a progress bar or any UI element with this percentage
+                                uprog.update(percentComplete);
+                            }
+                        }, false);
+                        return xhr;
+                    },
+                    complete: function (xhr, status) {
+                        setTimeout(function () {
+                            uprog.update(0);
+                            $('#up-progress').hide();
+                        }, 2000);
+                    },
+                    success: function (response) {
+                        if (!response.response) {
+                            alert(response.message); // Display the error message from the server
+                            return; // Stop execution if there is an error
+                        }
+                        if (response) {
+                            uprog.update(97);
+                            // Handle success
+                            updateFileList(ProductId);
+                            uprog.update(98);
+                            // Introduce a delay of 2 seconds (2000 milliseconds) before clearing files
+                            setTimeout(function () {
+                                uprog.update(99);
+                                myDropzone.removeAllFiles();
+                                uprog.update(100);
+                                window.location.reload();
+                            }, 1500); // Adjust the delay time as needed
+
+                            
+                        }
+                        
+                        
+                    },
+                    error: function (xhr, status, error) {
+                        // Handle error
+                        console.error("Error uploading files: ", error);
+                    }
+
+                        
+                });
+
+                // Start processing the queue
+                myDropzone.processQueue();
+                $('.dz-error-message').css('display', 'none');
+                $('.dz-success-mark').css('display', 'none');
+                $('.dz-error-mark').css('display', 'none');
+                
+            });
+          
+        }
+    };
+
+    function updateFileList(ProductId) {
+        $.ajax({
+            url: '/File/FileListPartial',
+            type: 'GET',
+            data: { ProductId: ProductId },
+            cache: false,
+            success: function (data) {
+                if (data) {
+                    console.log("AJAX Success, received data:", data);
+                    $('#fileListContainer').html(data);
+                
+                } else {
+                    console.log("AJAX Success, but no data received.");
+                    $('#fileListContainer').html("<p>No files to display.</p>");
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error("Error refreshing file list: ", error);
+                $('#fileListContainer').html("<p>Error loading files.</p>");
+            }
+        });
+    }
+    function hideShowUploaderForDropZone(hide = false){
+        if (hide)
+            $('.dz-progress').hide();
+        else
+            $('.dz-progress').show();
+    }
+
+
+
+    // document.addEventListener('DOMContentLoaded', function () {
+    //     var params = new URLSearchParams(window.location.search);
+    //     var productId = params.get('ProductId');
+
+    //     if (productId) {
+    //         var paginationLinks = document.querySelectorAll('.pagination a.page-link');
+    //         paginationLinks.forEach(function (link) {
+    //             var href = link.getAttribute('href');
+    //             if (href) {
+    //                 href += (href.includes('?') ? '&' : '?') + 'ProductId=' + encodeURIComponent(productId);
+    //                 link.setAttribute('href', href);
+    //             }
+    //         });
+    //     }
+    // });
+
+    function showImageModal(imageUrl) {
+        document.getElementById('modalImage').src = imageUrl;
+        document.getElementById('imageModal').style.display = 'flex';
+    }
+
+    function closeImageModal() {
+        document.getElementById('imageModal').style.display = 'none';
+    }
+
+
+    function deleteFile(fileId, element) {
+        var confirmed = confirm("Are you sure you want to delete this file?");
+        if (!confirmed) {
+            return;
+        }
+
+        document.getElementById('preloader').style.display = 'flex';
+
+        fetch('/File/DeleteFileFromFileSystem?id=' + fileId, {
+            method: 'POST' // or 'GET' depending on your server setup
+        })
+            .then(response => {
+                if (response.ok) {
+                    // Optionally remove the file row from the table
+                    element.closest('tr').remove();
+                    alert("File deleted successfully");
+                } else {
+                    alert("Error deleting file");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("An error occurred");
+            })
+            .finally(() => {
+                document.getElementById('preloader').style.display = 'none';
+            });
+    }
+</script>
+
+<style>
+    .dz-preview {
+        /* Apply any necessary styles for draggable items */
+        cursor: move;
+        margin: 5px;
+    }
+
+</style>
+
+
